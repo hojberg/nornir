@@ -1,0 +1,78 @@
+-- This file has been generated from package.yaml by hpack version 0.20.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 88fa9bf2c4008499b36dfb812dd8dd8f5a1435ac05b65a5ef49fe33148f3ce18
+
+name:           nornir
+version:        0.1.0.0
+description:    Please see the README on Github at <https://github.com/githubuser/nornir#readme>
+homepage:       https://github.com/githubuser/nornir#readme
+bug-reports:    https://github.com/githubuser/nornir/issues
+author:         Author name here
+maintainer:     example@example.com
+copyright:      2018 Author name here
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+cabal-version:  >= 1.10
+
+extra-source-files:
+    ChangeLog.md
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/nornir
+
+library
+  hs-source-dirs:
+      src
+  build-depends:
+      base >=4.7 && <5
+    , brick >=0.36
+    , microlens-platform
+    , text
+    , uuid
+    , vty
+  exposed-modules:
+      Lib
+      Nornir.Types
+  other-modules:
+      Paths_nornir
+  default-language: Haskell2010
+
+executable nornir-exe
+  main-is: Main.hs
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , brick >=0.36
+    , microlens-platform
+    , nornir
+    , text
+    , uuid
+    , vty
+  other-modules:
+      Paths_nornir
+  default-language: Haskell2010
+
+test-suite nornir-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , brick >=0.36
+    , microlens-platform
+    , nornir
+    , text
+    , uuid
+    , vty
+  other-modules:
+      Paths_nornir
+  default-language: Haskell2010
