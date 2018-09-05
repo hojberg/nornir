@@ -95,7 +95,7 @@ initialState =
 tasksByScreen :: Screen -> [Task] -> [Task]
 tasksByScreen Lib.Inbox    = List.filter (\t -> (_due t) == Task.Undecided)
 tasksByScreen Lib.Today    = List.filter (\t -> (_due t) == Task.Today)
-tasksByScreen Lib.Upcoming = List.filter (\t -> (_due t) == Task.Today)
+tasksByScreen Lib.Upcoming = List.filter (\t -> (_due t) == Task.Scheduled)
 tasksByScreen Lib.Anytime  = List.filter (\t -> (_due t) == Task.Unscheduled)
 tasksByScreen Lib.Someday  = List.filter (\t -> (_due t) == Task.Someday)
 
@@ -208,7 +208,7 @@ awaitingCommand model _ = M.continue model
 screenToTaskDue :: Screen -> Task.Due
 screenToTaskDue Lib.Inbox    = Task.Undecided
 screenToTaskDue Lib.Today    = Task.Today
-screenToTaskDue Lib.Upcoming = Task.Today
+screenToTaskDue Lib.Upcoming = Task.Scheduled
 screenToTaskDue Lib.Anytime  = Task.Unscheduled
 screenToTaskDue Lib.Someday  = Task.Someday
 
