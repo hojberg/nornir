@@ -1,8 +1,8 @@
--- This file has been generated from package.yaml by hpack version 0.20.0.
+-- This file has been generated from package.yaml by hpack version 0.28.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 88fa9bf2c4008499b36dfb812dd8dd8f5a1435ac05b65a5ef49fe33148f3ce18
+-- hash: 2a124894554654022366a835607a68a916977f4c7f1fd69f92fb5d024676545f
 
 name:           nornir
 version:        0.1.0.0
@@ -16,7 +16,6 @@ license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
 cabal-version:  >= 1.10
-
 extra-source-files:
     ChangeLog.md
     README.md
@@ -37,7 +36,9 @@ library
     , vty
   exposed-modules:
       Lib
+      Nornir.Task
       Nornir.Types
+      Nornir.Util
   other-modules:
       Paths_nornir
   default-language: Haskell2010
