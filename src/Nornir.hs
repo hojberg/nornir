@@ -1,8 +1,6 @@
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-module Lib where
+module Nornir where
 
 import           Brick.AttrMap                  ( AttrMap
                                                 , attrMap
@@ -37,24 +35,18 @@ import           Graphics.Vty                   ( Event(EvKey)
                                                 )
 import qualified Graphics.Vty                  as V
 
-import           Nornir.Util                    ( nextIndex
+import           Util                    ( nextIndex
                                                 , prevIndex
                                                 )
-import           Nornir.Types                   ( Project )
-import           Nornir.Task                    ( Task(..)
+import           Task                    ( Task(..)
                                                 , TaskStatus(..)
                                                 )
-import           Nornir.Task                   as Task
+import qualified Task
+import qualified UI
+import Screen (Screen(..))
+import qualified Screen
 
 -- MODEL
-
-data Screen
-  = Inbox
-  | Today
-  | Upcoming
-  | Anytime
-  | Someday
-  deriving (Show, Ord, Eq)
 
 data Name
   = Info
@@ -70,9 +62,8 @@ data Mode
 
 data Model = Model
   { tasks          :: [Task]
-  , projects       :: [Project]
   , mode           :: Mode
-  , screen         :: Lib.Screen
+  , screen         :: Screen
   , selectedTaskId :: Maybe UUID
   }
 
@@ -82,8 +73,7 @@ initialState =
   do
       \t -> Model
         { tasks          = [t]
-        , projects       = []
-        , screen         = Lib.Today
+        , screen         = Screen.Today
         , mode           = AwaitingCommand
         , selectedTaskId = Nothing
         }
@@ -93,11 +83,14 @@ initialState =
 -- UPDATE
 
 tasksByScreen :: Screen -> [Task] -> [Task]
-tasksByScreen Lib.Inbox    = List.filter (\t -> (_due t) == Task.Undecided)
-tasksByScreen Lib.Today    = List.filter (\t -> (_due t) == Task.Today)
-tasksByScreen Lib.Upcoming = List.filter (\t -> (_due t) == Task.Scheduled)
-tasksByScreen Lib.Anytime  = List.filter (\t -> (_due t) == Task.Unscheduled)
-tasksByScreen Lib.Someday  = List.filter (\t -> (_due t) == Task.Someday)
+tasksByScreen screen tasks =
+  let
+    taskDue = screenToTaskDue screen
+
+    forScreen t =
+      due t == taskDue && status t /= Task.Logged
+  in
+    List.filter forScreen tasks
 
 
 tasksForCurrentScreen :: Model -> [Task]
@@ -108,11 +101,11 @@ findIndexOfSelectedTaskId :: Maybe UUID -> [Task] -> Maybe Int
 findIndexOfSelectedTaskId _       [] = Nothing
 findIndexOfSelectedTaskId Nothing _  = Nothing
 findIndexOfSelectedTaskId (Just selectedId) tasks =
-  List.find (\t -> _id t == selectedId) tasks >>= (\t -> elemIndex t tasks)
+  List.find (\t -> tId t == selectedId) tasks >>= (\t -> elemIndex t tasks)
 
 previousTaskId :: Maybe UUID -> [Task] -> Maybe UUID
 previousTaskId selectedTaskId tasks =
-  fmap _id
+  fmap tId
     $ fmap (tasks !!)
     $ prevIndex tasks
     $ (findIndexOfSelectedTaskId selectedTaskId tasks)
@@ -120,7 +113,7 @@ previousTaskId selectedTaskId tasks =
 
 nextTaskId :: Maybe UUID -> [Task] -> Maybe UUID
 nextTaskId selectedTaskId tasks =
-  fmap _id
+  fmap tId
     $ fmap (tasks !!)
     $ nextIndex tasks
     $ (findIndexOfSelectedTaskId selectedTaskId tasks)
@@ -145,29 +138,19 @@ deleteSelectedTask model = case selectedTaskId model of
   Nothing -> model
   Just selectedId ->
     let allTasks          = tasks model
-        newTasks          = List.filter (\t -> _id t /= selectedId) $ allTasks
+        newTasks          = List.filter (\t -> tId t /= selectedId) $ allTasks
         newSelectedTaskId = nextTaskId (selectedTaskId model) allTasks
     in  model { tasks = newTasks, selectedTaskId = newSelectedTaskId }
 
 
 selectNextScreen :: Model -> Model
 selectNextScreen model =
-  let newScreen = case screen model of
-        Lib.Inbox    -> Lib.Today
-        Lib.Today    -> Lib.Upcoming
-        Lib.Upcoming -> Lib.Anytime
-        Lib.Anytime  -> Lib.Someday
-        Lib.Someday  -> Lib.Someday
+  let newScreen = Screen.nextScreen (screen model)
   in  model { screen = newScreen }
 
 selectPreviousScreen :: Model -> Model
 selectPreviousScreen model =
-  let newScreen = case screen model of
-        Lib.Inbox    -> Lib.Inbox
-        Lib.Today    -> Lib.Inbox
-        Lib.Upcoming -> Lib.Today
-        Lib.Anytime  -> Lib.Upcoming
-        Lib.Someday  -> Lib.Anytime
+  let newScreen = Screen.previousScreen (screen model)
   in  model { screen = newScreen }
 
 
@@ -206,11 +189,11 @@ awaitingCommand model _ = M.continue model
 
 
 screenToTaskDue :: Screen -> Task.Due
-screenToTaskDue Lib.Inbox    = Task.Undecided
-screenToTaskDue Lib.Today    = Task.Today
-screenToTaskDue Lib.Upcoming = Task.Scheduled
-screenToTaskDue Lib.Anytime  = Task.Unscheduled
-screenToTaskDue Lib.Someday  = Task.Someday
+screenToTaskDue Screen.Inbox    = Task.Undecided
+screenToTaskDue Screen.Today    = Task.Today
+screenToTaskDue Screen.Upcoming = Task.Today
+screenToTaskDue Screen.Anytime  = Task.Unscheduled
+screenToTaskDue Screen.Someday  = Task.Someday
 
 
 update :: Model -> BrickEvent Name e -> EventM Name (Next Model)
@@ -239,40 +222,25 @@ update model evt = case mode model of
 
 -- VIEW
 
-fill :: Widget Name
-fill = C.fill ' '
-
 
 navItem :: String -> Widget Name
 navItem item = C.vBox
-  [C.vLimit 1 $ C.hBox [itemName, fill, B.vBorder, count], C.hBox [B.hBorder]]
+  [C.vLimit 1 $ C.hBox [itemName, UI.fill, B.vBorder, count], C.hBox [B.hBorder]]
  where
   itemName = C.str item
   count    = C.str "   3 "
 
 
-isScreenSelected :: Screen -> Screen -> Bool
-isScreenSelected currentScreen screen = currentScreen == screen
-
-
-formatScreen :: Screen -> String
-formatScreen Lib.Inbox    = "✉  Inbox"
-formatScreen Lib.Today    = "★  Today"
-formatScreen Lib.Upcoming = "⚅  Upcoming"
-formatScreen Lib.Anytime  = "⫹⫺ Anytime"
-formatScreen Lib.Someday  = " ☾ Someday"
-
-
 screenRow :: Screen -> Screen -> Widget Name
 screenRow currentScreen screen =
-  let formattedScreen = " " ++ formatScreen screen ++ " "
-  in  if isScreenSelected currentScreen screen
-        then C.withBorderStyle dashedBorder $ C.vBox
-          [ C.vLimit 1 $ C.withAttr "selected" $ C.str $ formattedScreen
-          , C.hBox [B.hBorder]
-          ]
-        else C.withBorderStyle dashedBorder
-          $ C.vBox [C.vLimit 1 $ C.str $ formattedScreen, C.hBox [B.hBorder]]
+  let formattedScreen = " " ++ Screen.format screen ++ " "
+  in if currentScreen == screen
+       then C.withBorderStyle UI.dashedBorder $ C.vBox
+         [ C.vLimit 1 $ C.withAttr "selected" $ C.str $ formattedScreen
+         , C.hBox [B.hBorder]
+         ]
+       else C.withBorderStyle UI.dashedBorder
+         $ C.vBox [C.vLimit 1 $ C.str $ formattedScreen, C.hBox [B.hBorder]]
 
 
 nav :: Screen -> Widget Name
@@ -281,36 +249,27 @@ nav currentScreen =
     .  B.border
     $  C.hLimit 30
     $  C.vBox
-    $  List.map (screenRow currentScreen)
-                [Lib.Inbox, Lib.Today, Lib.Upcoming, Lib.Anytime, Lib.Someday]
-    ++ [fill]
-
-
-unchecked :: String
-unchecked = "☐ "
-
-
-checked :: String
-checked = "☑ "
+    $  List.map (screenRow currentScreen) Screen.allScreens
+    ++ [UI.fill]
 
 
 isTaskSelected :: Maybe UUID -> Task -> Bool
 isTaskSelected Nothing           _    = False
-isTaskSelected (Just selectedId) task = _id task == selectedId
+isTaskSelected (Just selectedId) task = tId task == selectedId
 
 
 formatTask :: Task -> String
-formatTask task = case _status task of
-  Incomplete -> unchecked ++ " " ++ (unpack $ _name task)
-  Complete   -> checked ++ " " ++ (unpack $ _name task)
-  Logged     -> checked ++ " " ++ (unpack $ _name task)
+formatTask task = case status task of
+  Incomplete -> UI.unchecked ++ " " ++ (unpack $ name task)
+  Complete   -> UI.checked ++ " " ++ (unpack $ name task)
+  Logged     -> UI.checked ++ " " ++ (unpack $ name task)
 
 
 taskRow :: Maybe UUID -> Task -> Widget Name
 taskRow selectedTaskId task = row
  where
   row = if isTaskSelected selectedTaskId task
-    then C.withBorderStyle dashedBorder $ C.vBox
+    then C.withBorderStyle UI.dashedBorder $ C.vBox
       [ C.vLimit 1
       $  C.withAttr "selected"
       $  C.str
@@ -319,13 +278,13 @@ taskRow selectedTaskId task = row
       ++ " "
       , C.hBox [B.hBorder]
       ]
-    else C.withBorderStyle dashedBorder $ C.vBox
+    else C.withBorderStyle UI.dashedBorder $ C.vBox
       [C.vLimit 1 $ C.str $ " " ++ formatTask task ++ " ", C.hBox [B.hBorder]]
 
 
 taskList :: Maybe UUID -> [Task] -> Widget Name
 taskList selectedTaskId tasks =
-  C.vBox $ (List.map (taskRow selectedTaskId) tasks) ++ [fill]
+  C.vBox $ (List.map (taskRow selectedTaskId) tasks) ++ [UI.fill]
 
 
 contentTitle :: String -> Widget Name
@@ -336,16 +295,8 @@ contentTitle title =
 content :: Screen -> Maybe UUID -> [Task] -> Widget Name
 content currentScreen selectedTaskId tasks =
   C.withBorderStyle BS.unicodeRounded . B.border $ C.vBox
-    [contentTitle $ formatScreen currentScreen, taskList selectedTaskId tasks]
+    [contentTitle $ Screen.format currentScreen, taskList selectedTaskId tasks]
 
-
-calendarDay :: Widget Name
-calendarDay =
-  C.withBorderStyle BS.unicodeRounded
-    . B.border
-    $ C.hLimit 50
-    $ C.center
-    $ C.str " "
 
 
 workspace :: Model -> Widget Name
@@ -354,7 +305,6 @@ workspace model = C.hBox
   , C.str " "
   , content (screen model) (selectedTaskId model) $ tasksForCurrentScreen model
   , C.str " "
-  , calendarDay
   ]
 
 
@@ -377,29 +327,6 @@ render model = [ui]
   where ui = C.joinBorders $ C.vBox [workspace model, cmdline model]
 
 
-dashedBorder :: BS.BorderStyle
-dashedBorder = BS.BorderStyle
-  { BS.bsCornerTL      = '╭'
-  , BS.bsCornerTR      = '╮'
-  , BS.bsCornerBR      = '╯'
-  , BS.bsCornerBL      = '╰'
-  , BS.bsIntersectFull = '┼'
-  , BS.bsIntersectL    = '├'
-  , BS.bsIntersectR    = '┤'
-  , BS.bsIntersectT    = '┬'
-  , BS.bsIntersectB    = '┴'
-  , BS.bsHorizontal    = '╴'
-  , BS.bsVertical      = '┆'
-  }
-
-styles :: A.AttrMap
-styles = A.attrMap
-  V.defAttr
-  [ (B.borderAttr     , fg V.white)
-  , (E.editFocusedAttr, V.black `on` V.green)
-  , ("selected"       , fg V.blue)
-  ]
-
 
 -- APP
 
@@ -408,7 +335,7 @@ app :: App Model e Name
 app = App
   { appDraw         = render
   , appHandleEvent  = update
-  , appAttrMap      = const styles
+  , appAttrMap      = const UI.styles
   , appStartEvent   = return
   , appChooseCursor = neverShowCursor
   }

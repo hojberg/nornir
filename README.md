@@ -1,2 +1,0 @@
-# nornir
-Terminal Task Manager

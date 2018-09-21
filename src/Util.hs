@@ -1,4 +1,4 @@
-module Nornir.Util where
+module Util where
 
 nextIndex :: [a] -> Maybe Int -> Maybe Int
 nextIndex []   _        = Nothing

@@ -1,6 +1,6 @@
 module Main where
 
-import Lib (run)
+import Nornir (run)
 
 main :: IO ()
 main = run
