@@ -35,15 +35,16 @@ import           Graphics.Vty                   ( Event(EvKey)
                                                 )
 import qualified Graphics.Vty                  as V
 
-import           Util                    ( nextIndex
+import           Util                           ( nextIndex
                                                 , prevIndex
                                                 )
-import           Task                    ( Task(..)
+import           Task                           ( Task(..)
                                                 , TaskStatus(..)
                                                 )
 import qualified Task
+import           DB
 import qualified UI
-import Screen (Screen(..))
+import           Screen                         ( Screen(..) )
 import qualified Screen
 
 -- MODEL
@@ -68,55 +69,46 @@ data Model = Model
   }
 
 
-initialState :: IO Model
-initialState =
-  do
-      \t -> Model
-        { tasks          = [t]
-        , screen         = Screen.Today
-        , mode           = AwaitingCommand
-        , selectedTaskId = Nothing
-        }
-    <$> Task.build Task.Today "Buy Milk"
+initialState :: [Task] -> IO Model
+initialState tasks = pure Model
+  { tasks          = tasks
+  , screen         = Screen.Today
+  , mode           = AwaitingCommand
+  , selectedTaskId = Nothing
+  }
 
 
 -- UPDATE
 
+
 tasksByScreen :: Screen -> [Task] -> [Task]
 tasksByScreen screen tasks =
-  let
-    taskDue = screenToTaskDue screen
+  let taskDue = screenToTaskDue screen
 
-    forScreen t =
-      due t == taskDue && status t /= Task.Logged
-  in
-    List.filter forScreen tasks
+      forScreen t = due t == taskDue && status t /= Task.Logged
+  in  List.filter forScreen tasks
 
 
 tasksForCurrentScreen :: Model -> [Task]
 tasksForCurrentScreen model = tasksByScreen (screen model) (tasks model)
 
 
-findIndexOfSelectedTaskId :: Maybe UUID -> [Task] -> Maybe Int
-findIndexOfSelectedTaskId _       [] = Nothing
-findIndexOfSelectedTaskId Nothing _  = Nothing
-findIndexOfSelectedTaskId (Just selectedId) tasks =
-  List.find (\t -> tId t == selectedId) tasks >>= (\t -> elemIndex t tasks)
+tasksIndexToId :: [Task] -> Int -> UUID
+tasksIndexToId tasks idx = tId $ tasks !! idx
+
 
 previousTaskId :: Maybe UUID -> [Task] -> Maybe UUID
 previousTaskId selectedTaskId tasks =
-  fmap tId
-    $ fmap (tasks !!)
-    $ prevIndex tasks
-    $ (findIndexOfSelectedTaskId selectedTaskId tasks)
+  fmap (tasksIndexToId tasks) $ prevIndex tasks $ Task.indexOfTaskId
+    selectedTaskId
+    tasks
 
 
 nextTaskId :: Maybe UUID -> [Task] -> Maybe UUID
 nextTaskId selectedTaskId tasks =
-  fmap tId
-    $ fmap (tasks !!)
-    $ nextIndex tasks
-    $ (findIndexOfSelectedTaskId selectedTaskId tasks)
+  fmap (tasksIndexToId tasks) $ nextIndex tasks $ Task.indexOfTaskId
+    selectedTaskId
+    tasks
 
 
 selectPreviousTask :: Model -> Model
@@ -138,7 +130,7 @@ deleteSelectedTask model = case selectedTaskId model of
   Nothing -> model
   Just selectedId ->
     let allTasks          = tasks model
-        newTasks          = List.filter (\t -> tId t /= selectedId) $ allTasks
+        newTasks          = List.filter (\t -> tId t /= selectedId) allTasks
         newSelectedTaskId = nextTaskId (selectedTaskId model) allTasks
     in  model { tasks = newTasks, selectedTaskId = newSelectedTaskId }
 
@@ -147,6 +139,7 @@ selectNextScreen :: Model -> Model
 selectNextScreen model =
   let newScreen = Screen.nextScreen (screen model)
   in  model { screen = newScreen }
+
 
 selectPreviousScreen :: Model -> Model
 selectPreviousScreen model =
@@ -161,10 +154,12 @@ toggleCompletionOfSelectedTask model = case selectedTaskId model of
     let newTasks = List.map (Task.toggleCompletion selectedId) $ tasks model
     in  model { tasks = newTasks }
 
+
 logAllCompleted :: Model -> Model
 logAllCompleted model =
   let newTasks = List.map Task.logCompleted $ tasks model
   in  model { tasks = newTasks }
+
 
 awaitingCommand :: Model -> BrickEvent Name e -> EventM Name (Next Model)
 awaitingCommand model (VtyEvent (EvKey (KChar 'n') [])) =
@@ -225,7 +220,9 @@ update model evt = case mode model of
 
 navItem :: String -> Widget Name
 navItem item = C.vBox
-  [C.vLimit 1 $ C.hBox [itemName, UI.fill, B.vBorder, count], C.hBox [B.hBorder]]
+  [ C.vLimit 1 $ C.hBox [itemName, UI.fill, B.vBorder, count]
+  , C.hBox [B.hBorder]
+  ]
  where
   itemName = C.str item
   count    = C.str "   3 "
@@ -234,13 +231,13 @@ navItem item = C.vBox
 screenRow :: Screen -> Screen -> Widget Name
 screenRow currentScreen screen =
   let formattedScreen = " " ++ Screen.format screen ++ " "
-  in if currentScreen == screen
-       then C.withBorderStyle UI.dashedBorder $ C.vBox
-         [ C.vLimit 1 $ C.withAttr "selected" $ C.str $ formattedScreen
-         , C.hBox [B.hBorder]
-         ]
-       else C.withBorderStyle UI.dashedBorder
-         $ C.vBox [C.vLimit 1 $ C.str $ formattedScreen, C.hBox [B.hBorder]]
+  in  if currentScreen == screen
+        then C.withBorderStyle UI.dashedBorder $ C.vBox
+          [ C.vLimit 1 $ C.withAttr "selected" $ C.str formattedScreen
+          , C.hBox [B.hBorder]
+          ]
+        else C.withBorderStyle UI.dashedBorder
+          $ C.vBox [C.vLimit 1 $ C.str formattedScreen, C.hBox [B.hBorder]]
 
 
 nav :: Screen -> Widget Name
@@ -260,9 +257,9 @@ isTaskSelected (Just selectedId) task = tId task == selectedId
 
 formatTask :: Task -> String
 formatTask task = case status task of
-  Incomplete -> UI.unchecked ++ " " ++ (unpack $ name task)
-  Complete   -> UI.checked ++ " " ++ (unpack $ name task)
-  Logged     -> UI.checked ++ " " ++ (unpack $ name task)
+  Incomplete -> UI.unchecked ++ " " ++ unpack (name task)
+  Complete   -> UI.checked ++ " " ++ unpack (name task)
+  Logged     -> UI.checked ++ " " ++ unpack (name task)
 
 
 taskRow :: Maybe UUID -> Task -> Widget Name
@@ -284,7 +281,7 @@ taskRow selectedTaskId task = row
 
 taskList :: Maybe UUID -> [Task] -> Widget Name
 taskList selectedTaskId tasks =
-  C.vBox $ (List.map (taskRow selectedTaskId) tasks) ++ [UI.fill]
+  C.vBox $ List.map (taskRow selectedTaskId) tasks ++ [UI.fill]
 
 
 contentTitle :: String -> Widget Name
@@ -296,7 +293,6 @@ content :: Screen -> Maybe UUID -> [Task] -> Widget Name
 content currentScreen selectedTaskId tasks =
   C.withBorderStyle BS.unicodeRounded . B.border $ C.vBox
     [contentTitle $ Screen.format currentScreen, taskList selectedTaskId tasks]
-
 
 
 workspace :: Model -> Widget Name
@@ -315,11 +311,8 @@ cmdline model =
         EditTask id editor ->
           C.vBox [E.renderEditor (C.str . unlines) True editor]
         AwaitingCommand -> C.vBox [C.str "Awaiting command"]
-  in  C.withBorderStyle BS.unicodeRounded
-      . B.border
-      $ C.vLimit 1
-      $ C.center
-      $ result
+  in  C.withBorderStyle BS.unicodeRounded . B.border $ C.vLimit 1 $ C.center
+        result
 
 
 render :: Model -> [Widget Name]
@@ -327,8 +320,14 @@ render model = [ui]
   where ui = C.joinBorders $ C.vBox [workspace model, cmdline model]
 
 
-
 -- APP
+
+
+{--
+   when the app starts we want to load all of the tasks, filtering will be done
+   by the app on that set. Overtime this needs to be refactored to allow for a
+   faster startup and filtering of a smaller set of tasks.
+--}
 
 
 app :: App Model e Name
@@ -340,6 +339,7 @@ app = App
   , appChooseCursor = neverShowCursor
   }
 
-
 run :: IO ()
-run = void $ initialState >>= M.defaultMain app
+run =
+  let dbCfg = Nothing
+  in  void $ DB.init dbCfg >>= initialState >>= M.defaultMain app

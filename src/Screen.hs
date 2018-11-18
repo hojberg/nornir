@@ -1,3 +1,5 @@
+{-# LANGUAGE UnicodeSyntax #-}
+
 module Screen where
 
 data Screen
@@ -9,8 +11,7 @@ data Screen
   deriving (Show, Ord, Eq)
 
 allScreens :: [Screen]
-allScreens = 
-  [Inbox, Today, Upcoming, Anytime, Someday]
+allScreens = [Inbox, Today, Upcoming, Anytime, Someday]
 
 format :: Screen -> String
 format Inbox    = "✉  Inbox"

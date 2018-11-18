@@ -1,11 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE UnicodeSyntax #-}
+
 module UI where
 
 import qualified Brick.Widgets.Border          as B
 import qualified Brick.Widgets.Border.Style    as BS
 import qualified Brick.Widgets.Core            as C
 import qualified Graphics.Vty                  as V
-import           Brick.Types                    ( Widget)
+import           Brick.Types                    ( Widget )
 import           Brick.Util                     ( on
                                                 , fg
                                                 , bg
