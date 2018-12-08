@@ -4,75 +4,48 @@ module DB where
 
 import           Task
 import           Control.Applicative
+import           Data.UUID                      ( UUID )
 import           Database.SQLite.Simple
 import           Database.SQLite.Simple.FromRow
+import           Database.SQLite.Simple.Internal
+import           Database.SQLite.Simple.ToField
 import           Data.Maybe
 import           System.Directory
 import           System.IO
 import           Data.Text                      ( pack )
 import qualified DB.Migrations                 as Migrations
-
+import           DB.Utils                       ( toQuery )
+import qualified Data.Text                     as T
 
 defaultDBFilePath :: String
 defaultDBFilePath = "/Users/shojberg/.config/nornir/nornir.db"
 
-newtype SchemaMigration = SchemaMigration { version :: Migrations.Version } deriving (Show, Eq)
-
-instance FromRow SchemaMigration where
-  fromRow = SchemaMigration <$> field
-
-instance ToRow SchemaMigration where
-  toRow (SchemaMigration version) = toRow version
-
-instance ToRow Int where
-  toRow = toRow
-
-createSchemaMigrationsTable :: Connection -> IO ()
-createSchemaMigrationsTable conn = execute_
+removeTask :: UUID -> IO ()
+removeTask taskId = withConnection defaultDBFilePath $ \conn -> execute
   conn
-  "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)"
+  "DELETE FROM tasks \
+  \WHERE id = ?"
+  (Only (toField taskId :: SQLData))
 
-queryVersion :: Connection -> IO (Maybe Migrations.Version)
-queryVersion conn =
-  let migrations =
-        query_ conn
-               "SELECT * FROM schema_migrations ORDER BY version DESC LIMIT 1" :: IO
-            [SchemaMigration]
-      toDate migrations = case migrations of
-        []       -> Nothing
-        (x : xs) -> Just (version x)
-  in  fmap toDate migrations
+updateTask :: Task -> IO ()
+updateTask task = withConnection defaultDBFilePath $ \conn -> execute
+  conn
+  "UPDATE tasks \
+  \SET name = ?, description = ?, status = ?, due = ? \
+  \WHERE id = ?"
+  ( name task :: T.Text
+  , description task :: T.Text
+  , (toField $ status task) :: SQLData
+  , (toField $ due task) :: SQLData
+  , (toField $ tId task) :: SQLData
+  )
 
-
-pathToVersion :: FilePath -> String
-pathToVersion path = path
-
-getMigrations :: Maybe Migrations.Version -> IO [Migrations.Migration]
-getMigrations version =
-  let migrations = case version of
-        Nothing -> Migrations.allMigrations
-        Just v  -> Migrations.migrationsForVersion v
-  in  pure migrations
-
-runMigration :: Connection -> Migrations.Migration -> IO ()
-runMigration conn (version, sql)
-  = let
-      addVersionSql = Query
-        (pack
-          (  "INSERT INTO schema_migrations (version) VALUES ("
-          ++ show version
-          ++ ")"
-          )
-        )
-    in  do
-          execute_ conn sql
-          execute_ conn addVersionSql
-
-
-migrateAll :: Connection -> IO ()
-migrateAll conn =
-  fmap head (queryVersion conn >>= getMigrations >>= mapM (runMigration conn))
-
+addTask task = withConnection defaultDBFilePath $ \conn -> execute
+  conn
+  "INSERT INTO tasks \
+  \(id, name, description, status, due) \
+  \VALUES (?, ?, ?, ?, ?)"
+  task
 
 init :: Maybe FilePath -> IO [Task]
 init dbFilePath =
@@ -80,8 +53,8 @@ init dbFilePath =
   in
     do
       conn <- open dbFile
-      createSchemaMigrationsTable conn
-      migrateAll conn
+      Migrations.createSchemaMigrationsTable conn
+      Migrations.migrateAll conn
       tasks <-
         query_ conn "SELECT id, name, description, status, due from tasks" :: IO
           [Task]

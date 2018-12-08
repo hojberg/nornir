@@ -125,14 +125,16 @@ selectNextTask model =
   in  model { selectedTaskId = newSelectedTaskId }
 
 
-deleteSelectedTask :: Model -> Model
+deleteSelectedTask :: Model -> IO Model
 deleteSelectedTask model = case selectedTaskId model of
-  Nothing -> model
+  Nothing -> pure model
   Just selectedId ->
     let allTasks          = tasks model
         newTasks          = List.filter (\t -> tId t /= selectedId) allTasks
         newSelectedTaskId = nextTaskId (selectedTaskId model) allTasks
-    in  model { tasks = newTasks, selectedTaskId = newSelectedTaskId }
+    in  do
+          removeTask selectedId
+          pure $ model { tasks = newTasks, selectedTaskId = newSelectedTaskId }
 
 
 selectNextScreen :: Model -> Model
@@ -147,12 +149,15 @@ selectPreviousScreen model =
   in  model { screen = newScreen }
 
 
-toggleCompletionOfSelectedTask :: Model -> Model
+toggleCompletionOfSelectedTask :: Model -> IO Model
 toggleCompletionOfSelectedTask model = case selectedTaskId model of
-  Nothing -> model
+  Nothing -> pure model
   Just selectedId ->
-    let newTasks = List.map (Task.toggleCompletion selectedId) $ tasks model
-    in  model { tasks = newTasks }
+    let newTasks    = List.map (Task.toggleCompletion selectedId) $ tasks model
+        updatedTask = head $ List.filter (\t -> tId t == selectedId) newTasks
+    in  do
+          updateTask updatedTask
+          pure model { tasks = newTasks }
 
 
 logAllCompleted :: Model -> Model
@@ -169,9 +174,11 @@ awaitingCommand model (VtyEvent (EvKey (KChar 'k') [])) =
 awaitingCommand model (VtyEvent (EvKey (KChar 'j') [])) =
   M.continue $ selectNextTask model
 awaitingCommand model (VtyEvent (EvKey (KChar 'd') [])) =
-  M.continue $ deleteSelectedTask model
+  M.suspendAndResume $ do
+    deleteSelectedTask model
 awaitingCommand model (VtyEvent (EvKey (KChar ' ') [])) =
-  M.continue $ toggleCompletionOfSelectedTask model
+  M.suspendAndResume $ do
+    toggleCompletionOfSelectedTask model
 awaitingCommand model (VtyEvent (EvKey (KChar 'J') [])) =
   M.continue $ selectNextScreen model
 awaitingCommand model (VtyEvent (EvKey (KChar 'K') [])) =
@@ -204,6 +211,7 @@ update model evt = case mode model of
              then M.continue $ model { mode = AwaitingCommand }
              else M.suspendAndResume $ do
                newTask <- Task.build (screenToTaskDue $ screen model) taskName
+               DB.addTask newTask
                return $ model { mode  = AwaitingCommand
                               , tasks = allCurrentTasks ++ [newTask]
                               }
@@ -216,16 +224,6 @@ update model evt = case mode model of
 
 
 -- VIEW
-
-
-navItem :: String -> Widget Name
-navItem item = C.vBox
-  [ C.vLimit 1 $ C.hBox [itemName, UI.fill, B.vBorder, count]
-  , C.hBox [B.hBorder]
-  ]
- where
-  itemName = C.str item
-  count    = C.str "   3 "
 
 
 screenRow :: Screen -> Screen -> Widget Name
@@ -323,13 +321,6 @@ render model = [ui]
 -- APP
 
 
-{--
-   when the app starts we want to load all of the tasks, filtering will be done
-   by the app on that set. Overtime this needs to be refactored to allow for a
-   faster startup and filtering of a smaller set of tasks.
---}
-
-
 app :: App Model e Name
 app = App
   { appDraw         = render
@@ -338,6 +329,7 @@ app = App
   , appStartEvent   = return
   , appChooseCursor = neverShowCursor
   }
+
 
 run :: IO ()
 run =

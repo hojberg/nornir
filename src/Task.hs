@@ -122,5 +122,4 @@ indexOfTaskId :: Maybe UUID -> [Task] -> Maybe Int
 indexOfTaskId _       [] = Nothing
 indexOfTaskId Nothing _  = Nothing
 indexOfTaskId (Just id) tasks =
-  let finder t = tId t == id
-  in  List.find finder tasks >>= (\t -> elemIndex t tasks)
+  let finder t = tId t == id in List.find finder tasks >>= (`elemIndex` tasks)

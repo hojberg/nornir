@@ -23,6 +23,7 @@ library
                      , Screen
                      , DB
                      , DB.Migrations
+                     , DB.Utils
   build-depends:       base >=4.11 && <4.12
                      , brick
                      , vty
