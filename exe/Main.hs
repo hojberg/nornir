@@ -1,6 +1,6 @@
 module Main where
 
-import Nornir (run)
+import           App                            ( run )
 
 main :: IO ()
 main = run

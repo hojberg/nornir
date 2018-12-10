@@ -49,6 +49,9 @@ unchecked :: String
 unchecked = "☐ "
 
 
+dashed :: String
+dashed = "☒ "
+
 checked :: String
 checked = "☑ "
 

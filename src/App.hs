@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Nornir where
+module App where
 
+import           Control.Monad.IO.Class
 import           Brick.AttrMap                  ( AttrMap
                                                 , attrMap
                                                 )
@@ -85,7 +86,7 @@ tasksByScreen :: Screen -> [Task] -> [Task]
 tasksByScreen screen tasks =
   let taskDue = screenToTaskDue screen
 
-      forScreen t = due t == taskDue && status t /= Task.Logged
+      forScreen t = due t == taskDue
   in  List.filter forScreen tasks
 
 
@@ -160,34 +161,22 @@ toggleCompletionOfSelectedTask model = case selectedTaskId model of
           pure model { tasks = newTasks }
 
 
-logAllCompleted :: Model -> Model
-logAllCompleted model =
-  let newTasks = List.map Task.logCompleted $ tasks model
-  in  model { tasks = newTasks }
-
 
 awaitingCommand :: Model -> BrickEvent Name e -> EventM Name (Next Model)
-awaitingCommand model (VtyEvent (EvKey (KChar 'n') [])) =
-  M.continue $ model { mode = NewTask (E.editor TextBox Nothing "") }
-awaitingCommand model (VtyEvent (EvKey (KChar 'k') [])) =
-  M.continue $ selectPreviousTask model
-awaitingCommand model (VtyEvent (EvKey (KChar 'j') [])) =
-  M.continue $ selectNextTask model
-awaitingCommand model (VtyEvent (EvKey (KChar 'd') [])) =
-  M.suspendAndResume $ do
-    deleteSelectedTask model
-awaitingCommand model (VtyEvent (EvKey (KChar ' ') [])) =
-  M.suspendAndResume $ do
-    toggleCompletionOfSelectedTask model
-awaitingCommand model (VtyEvent (EvKey (KChar 'J') [])) =
-  M.continue $ selectNextScreen model
-awaitingCommand model (VtyEvent (EvKey (KChar 'K') [])) =
-  M.continue $ selectPreviousScreen model
-awaitingCommand model (VtyEvent (EvKey (KChar 'L') [])) =
-  M.continue $ logAllCompleted model
-awaitingCommand model (VtyEvent (EvKey (KChar 'q') [])) = M.halt model
-awaitingCommand model (VtyEvent (EvKey KEsc [])) = M.halt model
-awaitingCommand model _ = M.continue model
+awaitingCommand model event = case event of
+  (VtyEvent (EvKey (KChar 'n') [])) ->
+    M.continue $ model { mode = NewTask (E.editor TextBox Nothing "") }
+  (VtyEvent (EvKey (KChar 'k') [])) -> M.continue $ selectPreviousTask model
+  (VtyEvent (EvKey (KChar 'j') [])) -> M.continue $ selectNextTask model
+  (VtyEvent (EvKey (KChar 'd') [])) ->
+    liftIO (deleteSelectedTask model) >>= M.continue
+  (VtyEvent (EvKey (KChar ' ') [])) ->
+    liftIO (toggleCompletionOfSelectedTask model) >>= M.continue
+  (VtyEvent (EvKey (KChar 'J') [])) -> M.continue $ selectNextScreen model
+  (VtyEvent (EvKey (KChar 'K') [])) -> M.continue $ selectPreviousScreen model
+  (VtyEvent (EvKey (KChar 'q') [])) -> M.halt model
+  (VtyEvent (EvKey KEsc [])) -> M.halt model
+  _ -> M.continue model
 
 
 screenToTaskDue :: Screen -> Task.Due
@@ -209,12 +198,17 @@ update model evt = case mode model of
          in
            if taskName == ""
              then M.continue $ model { mode = AwaitingCommand }
-             else M.suspendAndResume $ do
-               newTask <- Task.build (screenToTaskDue $ screen model) taskName
-               DB.addTask newTask
-               return $ model { mode  = AwaitingCommand
-                              , tasks = allCurrentTasks ++ [newTask]
-                              }
+             else
+               liftIO
+                   (do
+                     newTask <- Task.build (screenToTaskDue $ screen model)
+                                           taskName
+                     DB.addTask newTask
+                     return $ model { mode  = AwaitingCommand
+                                    , tasks = allCurrentTasks ++ [newTask]
+                                    }
+                   )
+                 >>= M.continue
     (VtyEvent ev) -> M.continue =<< fmap
       (\newEd -> model { mode = NewTask newEd })
       (E.handleEditorEvent ev editor)
@@ -256,8 +250,8 @@ isTaskSelected (Just selectedId) task = tId task == selectedId
 formatTask :: Task -> String
 formatTask task = case status task of
   Incomplete -> UI.unchecked ++ " " ++ unpack (name task)
+  Started    -> UI.dashed ++ " " ++ unpack (name task)
   Complete   -> UI.checked ++ " " ++ unpack (name task)
-  Logged     -> UI.checked ++ " " ++ unpack (name task)
 
 
 taskRow :: Maybe UUID -> Task -> Widget Name

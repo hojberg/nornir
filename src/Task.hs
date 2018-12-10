@@ -38,8 +38,8 @@ instance FromField UUID where
 
 data TaskStatus
   = Incomplete
+  | Started
   | Complete
-  | Logged
   deriving (Show, Read, Eq, Bounded, Enum)
 
 instance ToField TaskStatus where
@@ -48,8 +48,8 @@ instance ToField TaskStatus where
 instance FromField TaskStatus where
   fromField (Field (SQLText "Incomplete") _) = Ok Incomplete
   fromField (Field (SQLText "Complete") _) = Ok Complete
-  fromField (Field (SQLText "Logged") _) = Ok Logged
-  fromField f = returnError ConversionFailed f "need 'Incomplete', 'Complete', or 'Logged'"
+  fromField (Field (SQLText "Started") _) = Ok Started
+  fromField f = returnError ConversionFailed f "need 'Incomplete', 'Complete', or 'Started"
 
 
 data Due
@@ -101,22 +101,17 @@ make due name id = Task
 build :: Due -> T.Text -> IO Task
 build due name = fmap (make due name) nextRandom
 
-invertTaskStatus :: TaskStatus -> TaskStatus
-invertTaskStatus Complete   = Incomplete
-invertTaskStatus Incomplete = Complete
+progressTaskStatus :: TaskStatus -> TaskStatus
+progressTaskStatus Incomplete = Started
+progressTaskStatus Started    = Complete
+progressTaskStatus Complete   = Incomplete
 
 toggleCompletion :: UUID -> Task -> Task
 toggleCompletion taskId task = if taskId == tId task
   then
-    let newStatus = invertTaskStatus $ status task
+    let newStatus = progressTaskStatus $ status task
     in  task { status = newStatus }
   else task
-
-logCompleted :: Task -> Task
-logCompleted task = case status task of
-  Incomplete -> task
-  Complete   -> task { status = Logged }
-  Logged     -> task
 
 indexOfTaskId :: Maybe UUID -> [Task] -> Maybe Int
 indexOfTaskId _       [] = Nothing
