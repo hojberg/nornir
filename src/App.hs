@@ -180,11 +180,10 @@ awaitingCommand model event = case event of
 
 
 screenToTaskDue :: Screen -> Task.Due
-screenToTaskDue Screen.Inbox    = Task.Undecided
-screenToTaskDue Screen.Today    = Task.Today
-screenToTaskDue Screen.Upcoming = Task.Today
-screenToTaskDue Screen.Anytime  = Task.Unscheduled
-screenToTaskDue Screen.Someday  = Task.Someday
+screenToTaskDue Screen.Next        = Task.Next
+screenToTaskDue Screen.Today       = Task.Next
+screenToTaskDue Screen.Yesterday   = Task.Next
+screenToTaskDue Screen.ExtraCredit = Task.Undecided
 
 
 update :: Model -> BrickEvent Name e -> EventM Name (Next Model)

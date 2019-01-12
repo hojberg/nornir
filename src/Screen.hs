@@ -3,35 +3,31 @@
 module Screen where
 
 data Screen
-  = Inbox
+  = Next
   | Today
-  | Upcoming
-  | Anytime
-  | Someday
+  | Yesterday
+  | ExtraCredit
   deriving (Show, Ord, Eq)
 
 allScreens :: [Screen]
-allScreens = [Inbox, Today, Upcoming, Anytime, Someday]
+allScreens = [Next, Today, Yesterday, ExtraCredit]
 
 format :: Screen -> String
-format Inbox    = "✉  Inbox"
-format Today    = "★  Today"
-format Upcoming = "⚅  Upcoming"
-format Anytime  = "⫹⫺ Anytime"
-format Someday  = " ☾ Someday"
+format Next        = "✉  Next"
+format Today       = "★  Today"
+format Yesterday   = " ☾ Yesterday"
+format ExtraCredit = "⫹⫺ Extra Credit"
 
 nextScreen :: Screen -> Screen
 nextScreen screen = case screen of
-  Inbox    -> Today
-  Today    -> Upcoming
-  Upcoming -> Anytime
-  Anytime  -> Someday
-  Someday  -> Someday
+  Next        -> Today
+  Today       -> Yesterday
+  Yesterday   -> ExtraCredit
+  ExtraCredit -> ExtraCredit
 
 previousScreen :: Screen -> Screen
 previousScreen screen = case screen of
-  Inbox    -> Inbox
-  Today    -> Inbox
-  Upcoming -> Today
-  Anytime  -> Upcoming
-  Someday  -> Anytime
+  Next        -> Next
+  Today       -> Next
+  Yesterday   -> Today
+  ExtraCredit -> Yesterday

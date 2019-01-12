@@ -53,23 +53,19 @@ instance FromField TaskStatus where
 
 
 data Due
-  = Undecided
-  | Unscheduled
-  | Today
-  | Scheduled Day
-  | Someday
+  = Next
+  | OnDate Day
+  | Undecided
   deriving (Show, Read, Eq)
 
 instance ToField Due where
   toField = SQLText . T.pack . show
 
 instance FromField Due where
+  fromField (Field (SQLText "Next") _) = Ok Next
+  fromField (Field (SQLText "OnDate") _) = Ok Next -- TODO
   fromField (Field (SQLText "Undecided") _) = Ok Undecided
-  fromField (Field (SQLText "Unscheduled") _) = Ok Unscheduled
-  fromField (Field (SQLText "Today") _) = Ok Today
-  fromField (Field (SQLText "Scheduled") _) = Ok Today -- TODO
-  fromField (Field (SQLText "Someday") _) = Ok Someday
-  fromField f = returnError ConversionFailed f "need 'Undecided', 'Unscheduled', 'Today', 'Scheduled', 'or 'Someday'"
+  fromField f = returnError ConversionFailed f "need 'Next, 'OnDate or 'Undecided'"
 
 
 data Task = Task
