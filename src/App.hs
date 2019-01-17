@@ -48,6 +48,10 @@ import qualified UI
 import           Screen                         ( Screen(..) )
 import qualified Screen
 
+import           Data.Time.Clock
+import           Data.Time.Calendar
+import           Data.Time.LocalTime
+
 -- MODEL
 
 data Name
@@ -67,31 +71,38 @@ data Model = Model
   , mode           :: Mode
   , screen         :: Screen
   , selectedTaskId :: Maybe UUID
+  , today          :: Day
   }
 
 
 initialState :: [Task] -> IO Model
-initialState tasks = pure Model
-  { tasks          = tasks
-  , screen         = Screen.Today
-  , mode           = AwaitingCommand
-  , selectedTaskId = Nothing
-  }
+initialState tasks = do
+  now      <- getCurrentTime
+  timezone <- getCurrentTimeZone
+  let zoneNow = utcToLocalTime timezone now
+  let today'  = localDay zoneNow
+  pure Model
+    { tasks          = tasks
+    , screen         = Screen.Today
+    , mode           = AwaitingCommand
+    , selectedTaskId = Nothing
+    , today          = today'
+    }
 
 
 -- UPDATE
 
-
-tasksByScreen :: Screen -> [Task] -> [Task]
-tasksByScreen screen tasks =
-  let taskDue = screenToTaskDue screen
+tasksForCurrentScreen :: Model -> [Task]
+tasksForCurrentScreen model =
+  let today'    = today model
+      yesterday = addDays (-1) today'
+      taskDue   = case screen model of
+        Screen.Next      -> Task.Next
+        Screen.Today     -> Task.OnDate today'
+        Screen.Yesterday -> Task.OnDate yesterday
 
       forScreen t = due t == taskDue
-  in  List.filter forScreen tasks
-
-
-tasksForCurrentScreen :: Model -> [Task]
-tasksForCurrentScreen model = tasksByScreen (screen model) (tasks model)
+  in  List.filter forScreen (tasks model)
 
 
 tasksIndexToId :: [Task] -> Int -> UUID
@@ -179,13 +190,6 @@ awaitingCommand model event = case event of
   _ -> M.continue model
 
 
-screenToTaskDue :: Screen -> Task.Due
-screenToTaskDue Screen.Next        = Task.Next
-screenToTaskDue Screen.Today       = Task.Next
-screenToTaskDue Screen.Yesterday   = Task.Next
-screenToTaskDue Screen.ExtraCredit = Task.Undecided
-
-
 update :: Model -> BrickEvent Name e -> EventM Name (Next Model)
 update model evt = case mode model of
   NewTask editor -> case evt of
@@ -194,14 +198,20 @@ update model evt = case mode model of
       -> let
            taskName        = T.pack $ unlines $ E.getEditContents editor
            allCurrentTasks = tasks model
+           today'          = today model
+           yesterday       = addDays (-1) today'
+
+           dueForScreen    = case screen model of
+             Screen.Next      -> Task.Next
+             Screen.Today     -> Task.OnDate today'
+             Screen.Yesterday -> Task.OnDate yesterday
          in
            if taskName == ""
              then M.continue $ model { mode = AwaitingCommand }
              else
                liftIO
                    (do
-                     newTask <- Task.build (screenToTaskDue $ screen model)
-                                           taskName
+                     newTask <- Task.build dueForScreen taskName
                      DB.addTask newTask
                      return $ model { mode  = AwaitingCommand
                                     , tasks = allCurrentTasks ++ [newTask]

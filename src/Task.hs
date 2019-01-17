@@ -17,6 +17,7 @@ import           Database.SQLite.Simple.FromField
 import           Database.SQLite.Simple.FromRow
 import           Database.SQLite.Simple.Internal
 import           Database.SQLite.Simple.Ok
+import           Data.Time.Calendar
 
 
 -- CORE
@@ -55,17 +56,27 @@ instance FromField TaskStatus where
 data Due
   = Next
   | OnDate Day
-  | Undecided
   deriving (Show, Read, Eq)
 
 instance ToField Due where
   toField = SQLText . T.pack . show
 
 instance FromField Due where
-  fromField (Field (SQLText "Next") _) = Ok Next
-  fromField (Field (SQLText "OnDate") _) = Ok Next -- TODO
-  fromField (Field (SQLText "Undecided") _) = Ok Undecided
-  fromField f = returnError ConversionFailed f "need 'Next, 'OnDate or 'Undecided'"
+  fromField field =
+    case field of
+      (Field (SQLText text) _) ->
+        if text == "Next" then Ok Next
+        else if List.isPrefixOf "OnDate" (T.unpack text) then
+          let
+            dayString = T.unpack $ T.replace "OnDate " ""  text
+            dayM = parseTimeM True defaultTimeLocale "%Y-%m-%d" dayString :: Maybe Day
+
+            res = case dayM of
+              Nothing -> returnError ConversionFailed field "Could not parse day for OnDate"
+              Just day -> Ok (OnDate day)
+          in
+            res
+        else returnError ConversionFailed field "need 'Next or 'OnDate'"
 
 
 data Task = Task
