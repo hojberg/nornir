@@ -185,8 +185,7 @@ awaitingCommand model event = case event of
     liftIO (toggleCompletionOfSelectedTask model) >>= M.continue
   (VtyEvent (EvKey (KChar 'J') [])) -> M.continue $ selectNextScreen model
   (VtyEvent (EvKey (KChar 'K') [])) -> M.continue $ selectPreviousScreen model
-  (VtyEvent (EvKey (KChar 'q') [])) -> M.halt model
-  (VtyEvent (EvKey KEsc [])) -> M.halt model
+  (VtyEvent (EvKey (KChar 'Q') [])) -> M.halt model
   _ -> M.continue model
 
 
