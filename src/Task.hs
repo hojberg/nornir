@@ -20,8 +20,6 @@ import           Database.SQLite.Simple.Ok
 import           Data.Time.Calendar
 
 
--- CORE
-
 instance ToField UUID where
   toField = SQLText . T.pack . show
 
@@ -37,14 +35,17 @@ instance FromField UUID where
           Just uuid -> Ok uuid
       _ -> returnError ConversionFailed f ""
 
+
 data TaskStatus
   = Incomplete
   | Started
   | Complete
   deriving (Show, Read, Eq, Bounded, Enum)
 
+
 instance ToField TaskStatus where
   toField = SQLText . T.pack . show
+
 
 instance FromField TaskStatus where
   fromField (Field (SQLText "Incomplete") _) = Ok Incomplete
@@ -64,9 +65,9 @@ instance ToField Due where
 instance FromField Due where
   fromField field =
     case field of
-      (Field (SQLText text) _) ->
-        if text == "Next" then Ok Next
-        else if List.isPrefixOf "OnDate" (T.unpack text) then
+      (Field (SQLText text) _)
+        | text == "Next" -> Ok Next
+        | "OnDate" `isPrefixOf` T.unpack text ->
           let
             dayString = T.unpack $ T.replace "OnDate " ""  text
             dayM = parseTimeM True defaultTimeLocale "%Y-%m-%d" dayString :: Maybe Day
@@ -76,7 +77,7 @@ instance FromField Due where
               Just day -> Ok (OnDate day)
           in
             res
-        else returnError ConversionFailed field "need 'Next or 'OnDate'"
+        | otherwise -> returnError ConversionFailed field "need 'Next or 'OnDate'"
 
 
 data Task = Task
@@ -108,10 +109,12 @@ make due name id = Task
 build :: Due -> T.Text -> IO Task
 build due name = fmap (make due name) nextRandom
 
+
 progressTaskStatus :: TaskStatus -> TaskStatus
 progressTaskStatus Incomplete = Started
 progressTaskStatus Started    = Complete
 progressTaskStatus Complete   = Incomplete
+
 
 toggleCompletion :: UUID -> Task -> Task
 toggleCompletion taskId task = if taskId == tId task
@@ -120,8 +123,22 @@ toggleCompletion taskId task = if taskId == tId task
     in  task { status = newStatus }
   else task
 
+
 indexOfTaskId :: Maybe UUID -> [Task] -> Maybe Int
 indexOfTaskId _       [] = Nothing
 indexOfTaskId Nothing _  = Nothing
 indexOfTaskId (Just id) tasks =
   let finder t = tId t == id in List.find finder tasks >>= (`elemIndex` tasks)
+
+
+score :: Task -> Double
+score task = case status task of
+  Incomplete -> 0.0
+  Started    -> 0.5
+  Complete   -> 1.0
+
+
+totalScore :: [Task] -> (Double, Int)
+totalScore tasks =
+  let theScore = List.foldl (+) 0.0 (List.map score tasks)
+  in  (theScore, List.length tasks)

@@ -289,10 +289,19 @@ contentTitle title =
   C.vBox [C.str " ", C.str (" " ++ title), C.str " ", B.hBorder]
 
 
+formattedTaskScore :: [Task] -> String
+formattedTaskScore tasks =
+  let (score, goal) = Task.totalScore tasks
+  in  "[" ++ show score ++ "/" ++ show goal ++ "]"
+
 content :: Screen -> Maybe UUID -> [Task] -> Widget Name
 content currentScreen selectedTaskId tasks =
-  C.withBorderStyle BS.unicodeRounded . B.border $ C.vBox
-    [contentTitle $ Screen.format currentScreen, taskList selectedTaskId tasks]
+  let formattedScreen = Screen.format currentScreen
+      screenTitle     = case currentScreen of
+        Screen.Today -> formattedScreen ++ " " ++ formattedTaskScore tasks
+        _            -> formattedScreen
+  in  C.withBorderStyle BS.unicodeRounded . B.border $ C.vBox
+        [contentTitle $ screenTitle, taskList selectedTaskId tasks]
 
 
 workspace :: Model -> Widget Name
