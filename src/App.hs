@@ -301,7 +301,7 @@ content currentScreen selectedTaskId tasks =
         Screen.Today -> formattedScreen ++ " " ++ formattedTaskScore tasks
         _            -> formattedScreen
   in  C.withBorderStyle BS.unicodeRounded . B.border $ C.vBox
-        [contentTitle $ screenTitle, taskList selectedTaskId tasks]
+        [contentTitle screenTitle, taskList selectedTaskId tasks]
 
 
 workspace :: Model -> Widget Name
@@ -343,6 +343,4 @@ app = App
 
 
 run :: IO ()
-run =
-  let dbCfg = Nothing
-  in  void $ DB.init dbCfg >>= initialState >>= M.defaultMain app
+run = void $ DB.init >>= initialState >>= M.defaultMain app
