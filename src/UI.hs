@@ -37,13 +37,15 @@ dashedBorder = BS.BorderStyle
 styles :: A.AttrMap
 styles = A.attrMap
   V.defAttr
-  [ (B.borderAttr     , fg V.white)
+  [ (B.borderAttr     , fg (V.Color240 43))
   , (E.editFocusedAttr, V.black `on` V.green)
-  , ("selected"       , fg V.red)
+  , ("selected"       , fg (V.Color240 59))
   ]
+
 
 fill :: Widget a
 fill = C.fill ' '
+
 
 unchecked :: String
 unchecked = "☐ "
@@ -52,6 +54,6 @@ unchecked = "☐ "
 dashed :: String
 dashed = "☒ "
 
+
 checked :: String
 checked = "☑ "
-

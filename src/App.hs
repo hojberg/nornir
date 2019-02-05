@@ -17,10 +17,6 @@ import           Brick.Types                    ( BrickEvent(..)
                                                 , Next
                                                 , Widget
                                                 )
-import           Brick.Util                     ( on
-                                                , fg
-                                                , bg
-                                                )
 import qualified Brick.Widgets.Border          as B
 import qualified Brick.Widgets.Border.Style    as BS
 import qualified Brick.Widgets.Center          as C
@@ -71,6 +67,7 @@ data Model = Model
   , mode           :: Mode
   , screen         :: Screen
   , selectedTaskId :: Maybe UUID
+  , clipboard      :: Maybe Task
   , today          :: Day
   }
 
@@ -86,6 +83,7 @@ initialState tasks = do
     , screen         = Screen.Today
     , mode           = AwaitingCommand
     , selectedTaskId = Nothing
+    , clipboard      = Nothing
     , today          = today'
     }
 
@@ -144,9 +142,13 @@ deleteSelectedTask model = case selectedTaskId model of
     let allTasks          = tasks model
         newTasks          = List.filter (\t -> tId t /= selectedId) allTasks
         newSelectedTaskId = nextTaskId (selectedTaskId model) allTasks
+        removedTask       = List.find (\t -> tId t == selectedId) allTasks
     in  do
           removeTask selectedId
-          pure $ model { tasks = newTasks, selectedTaskId = newSelectedTaskId }
+          pure $ model { tasks          = newTasks
+                       , selectedTaskId = newSelectedTaskId
+                       , clipboard      = removedTask
+                       }
 
 
 selectNextScreen :: Model -> Model
@@ -172,6 +174,16 @@ toggleCompletionOfSelectedTask model = case selectedTaskId model of
           pure model { tasks = newTasks }
 
 
+pasteTask :: Model -> IO Model
+pasteTask model = case clipboard model of
+  Nothing -> pure model
+  Just task ->
+    let allTasks = tasks model
+        newTasks = allTasks ++ [task { due = dueForScreen model }]
+    in  do
+          addTask task
+          pure model { tasks = newTasks }
+
 
 awaitingCommand :: Model -> BrickEvent Name e -> EventM Name (Next Model)
 awaitingCommand model event = case event of
@@ -181,12 +193,23 @@ awaitingCommand model event = case event of
   (VtyEvent (EvKey (KChar 'j') [])) -> M.continue $ selectNextTask model
   (VtyEvent (EvKey (KChar 'd') [])) ->
     liftIO (deleteSelectedTask model) >>= M.continue
+  (VtyEvent (EvKey (KChar 'p') [])) -> liftIO (pasteTask model) >>= M.continue
   (VtyEvent (EvKey (KChar ' ') [])) ->
     liftIO (toggleCompletionOfSelectedTask model) >>= M.continue
   (VtyEvent (EvKey (KChar 'J') [])) -> M.continue $ selectNextScreen model
   (VtyEvent (EvKey (KChar 'K') [])) -> M.continue $ selectPreviousScreen model
   (VtyEvent (EvKey (KChar 'Q') [])) -> M.halt model
   _ -> M.continue model
+
+
+dueForScreen :: Model -> Task.Due
+dueForScreen model =
+  let today'    = today model
+      yesterday = addDays (-1) today'
+  in  case screen model of
+        Screen.Next      -> Task.Next
+        Screen.Today     -> Task.OnDate today'
+        Screen.Yesterday -> Task.OnDate yesterday
 
 
 update :: Model -> BrickEvent Name e -> EventM Name (Next Model)
@@ -197,20 +220,13 @@ update model evt = case mode model of
       -> let
            taskName        = T.pack $ unlines $ E.getEditContents editor
            allCurrentTasks = tasks model
-           today'          = today model
-           yesterday       = addDays (-1) today'
-
-           dueForScreen    = case screen model of
-             Screen.Next      -> Task.Next
-             Screen.Today     -> Task.OnDate today'
-             Screen.Yesterday -> Task.OnDate yesterday
          in
            if taskName == ""
              then M.continue $ model { mode = AwaitingCommand }
              else
                liftIO
                    (do
-                     newTask <- Task.build dueForScreen taskName
+                     newTask <- Task.build (dueForScreen model) taskName
                      DB.addTask newTask
                      return $ model { mode  = AwaitingCommand
                                     , tasks = allCurrentTasks ++ [newTask]
