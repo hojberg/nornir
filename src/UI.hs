@@ -39,7 +39,10 @@ styles = A.attrMap
   V.defAttr
   [ (B.borderAttr     , fg (V.Color240 43))
   , (E.editFocusedAttr, V.black `on` V.green)
-  , ("selected"       , fg (V.Color240 59))
+  , ("Selected"       , fg (V.Color240 59))
+  , ("Started"        , fg (V.Color240 164))
+  , ("Complete"       , fg (V.Color240 98))
+  , ("Incomplete"     , fg V.white)
   ]
 
 

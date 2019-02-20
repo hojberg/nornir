@@ -279,20 +279,21 @@ formatTask task = case status task of
 
 
 taskRow :: Maybe UUID -> Task -> Widget Name
-taskRow selectedTaskId task = row
- where
-  row = if isTaskSelected selectedTaskId task
-    then C.withBorderStyle UI.dashedBorder $ C.vBox
-      [ C.vLimit 1
-      $  C.withAttr "selected"
-      $  C.str
-      $  " "
-      ++ formatTask task
-      ++ " "
-      , C.hBox [B.hBorder]
-      ]
-    else C.withBorderStyle UI.dashedBorder $ C.vBox
-      [C.vLimit 1 $ C.str $ " " ++ formatTask task ++ " ", C.hBox [B.hBorder]]
+taskRow selectedTaskId task =
+  let selected = if isTaskSelected selectedTaskId task then "█ " else "  "
+
+      attr     = show (status task)
+
+      row      = C.withBorderStyle UI.dashedBorder $ C.vBox
+        [ C.vLimit 1
+        $  C.withAttr (A.attrName attr)
+        $  C.str
+        $  selected
+        ++ formatTask task
+        ++ " "
+        , C.hBox [B.hBorder]
+        ]
+  in  row
 
 
 taskList :: Maybe UUID -> [Task] -> Widget Name
@@ -309,6 +310,7 @@ formattedTaskScore :: [Task] -> String
 formattedTaskScore tasks =
   let (score, goal) = Task.totalScore tasks
   in  "[" ++ show score ++ "/" ++ show goal ++ "]"
+
 
 content :: Screen -> Maybe UUID -> [Task] -> Widget Name
 content currentScreen selectedTaskId tasks =
