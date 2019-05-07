@@ -18,6 +18,7 @@ import           Database.SQLite.Simple.FromRow
 import           Database.SQLite.Simple.Internal
 import           Database.SQLite.Simple.Ok
 import           Data.Time.Calendar
+import           Data.Ord                       ( comparing )
 
 
 instance ToField UUID where
@@ -142,3 +143,8 @@ totalScore :: [Task] -> (Double, Int)
 totalScore tasks =
   let theScore = List.foldl (+) 0.0 (List.map score tasks)
   in  (theScore, List.length tasks)
+
+
+-- mostRecentTaskDay :: [Task] -> Maybe Day
+-- mostRecentTaskDay tasks =
+

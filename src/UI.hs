@@ -41,7 +41,7 @@ styles = A.attrMap
   , (E.editFocusedAttr, V.black `on` V.green)
   , ("Selected"       , fg (V.Color240 59))
   , ("Started"        , fg (V.Color240 164))
-  , ("Complete"       , fg (V.Color240 98))
+  , ("Complete"       , fg V.green)
   , ("Incomplete"     , fg V.white)
   ]
 

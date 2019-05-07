@@ -80,7 +80,7 @@ initialState tasks = do
   let today'  = localDay zoneNow
   pure Model
     { tasks          = tasks
-    , screen         = Screen.Today
+    , screen         = Screen.Next
     , mode           = AwaitingCommand
     , selectedTaskId = Nothing
     , clipboard      = Nothing
@@ -185,6 +185,50 @@ pasteTask model = case clipboard model of
           pure model { tasks = newTasks }
 
 
+moveSelectedTaskToToday :: Model -> IO Model
+moveSelectedTaskToToday model
+  = let
+      allTasks = tasks model
+
+      copyTask = case selectedTaskId model of
+        Nothing -> pure model
+        Just selectedId ->
+          let task = List.find (\t -> tId t == selectedId) allTasks
+          in  case task of
+                Nothing -> pure model
+                Just t  -> do
+                  newTask <- Task.build (Task.OnDate (today model)) (name t)
+                  addTask newTask
+                  pure (model { tasks = allTasks ++ [newTask] })
+
+      moveTask = case selectedTaskId model of
+        Nothing -> pure model
+        Just selectedId ->
+          let moveTask t = if tId t == selectedId
+                then t { due = Task.OnDate (today model) }
+                else t
+
+              allTasks          = tasks model
+              newTasks          = List.map moveTask allTasks
+              newSelectedTaskId = nextTaskId (selectedTaskId model) allTasks
+              task              = List.find (\t -> tId t == selectedId) newTasks
+          in  case task of
+                Nothing -> pure model
+                Just t  -> do
+                  updateTask t
+                  pure
+                    (model { tasks          = newTasks
+                           , selectedTaskId = newSelectedTaskId
+                           }
+                    )
+    in
+      case screen model of
+        Screen.Next      -> moveTask
+        Screen.Today     -> pure model
+        Screen.Yesterday -> copyTask
+
+
+
 awaitingCommand :: Model -> BrickEvent Name e -> EventM Name (Next Model)
 awaitingCommand model event = case event of
   (VtyEvent (EvKey (KChar 'n') [])) ->
@@ -198,6 +242,10 @@ awaitingCommand model event = case event of
     liftIO (toggleCompletionOfSelectedTask model) >>= M.continue
   (VtyEvent (EvKey (KChar 'J') [])) -> M.continue $ selectNextScreen model
   (VtyEvent (EvKey (KChar 'K') [])) -> M.continue $ selectPreviousScreen model
+  (VtyEvent (EvKey (KChar 'T') [])) ->
+    liftIO (moveSelectedTaskToToday model) >>= M.continue
+  (VtyEvent (EvKey (KChar 'R') [])) ->
+    liftIO (DB.init >>= initialState) >>= M.continue
   (VtyEvent (EvKey (KChar 'Q') [])) -> M.halt model
   _ -> M.continue model
 
@@ -249,7 +297,7 @@ screenRow currentScreen screen =
   let formattedScreen = " " ++ Screen.format screen ++ " "
   in  if currentScreen == screen
         then C.withBorderStyle UI.dashedBorder $ C.vBox
-          [ C.vLimit 1 $ C.withAttr "selected" $ C.str formattedScreen
+          [ C.vLimit 1 $ C.withAttr "Selected" $ C.str formattedScreen
           , C.hBox [B.hBorder]
           ]
         else C.withBorderStyle UI.dashedBorder
