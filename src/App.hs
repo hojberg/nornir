@@ -39,7 +39,7 @@ import           Task                           ( Task(..)
                                                 , TaskStatus(..)
                                                 )
 import qualified Task
-import           DB
+import qualified DB
 import qualified UI
 import           Screen                         ( Screen(..) )
 import qualified Screen
@@ -135,6 +135,7 @@ selectNextTask model =
   in  model { selectedTaskId = newSelectedTaskId }
 
 
+
 deleteSelectedTask :: Model -> IO Model
 deleteSelectedTask model = case selectedTaskId model of
   Nothing -> pure model
@@ -144,7 +145,7 @@ deleteSelectedTask model = case selectedTaskId model of
         newSelectedTaskId = nextTaskId (selectedTaskId model) allTasks
         removedTask       = List.find (\t -> tId t == selectedId) allTasks
     in  do
-          removeTask selectedId
+          DB.removeTask selectedId
           pure $ model { tasks          = newTasks
                        , selectedTaskId = newSelectedTaskId
                        , clipboard      = removedTask
@@ -170,7 +171,7 @@ toggleCompletionOfSelectedTask model = case selectedTaskId model of
     let newTasks    = List.map (Task.toggleCompletion selectedId) $ tasks model
         updatedTask = head $ List.filter (\t -> tId t == selectedId) newTasks
     in  do
-          updateTask updatedTask
+          DB.updateTask updatedTask
           pure model { tasks = newTasks }
 
 
@@ -179,10 +180,26 @@ pasteTask model = case clipboard model of
   Nothing -> pure model
   Just task ->
     let allTasks = tasks model
-        newTasks = allTasks ++ [task { due = dueForScreen model }]
+        newTask = task { due = dueForScreen model }
+        newTasks = allTasks ++ [newTask]
     in  do
-          addTask task
+          DB.addTask newTask
           pure model { tasks = newTasks }
+
+yankTask :: Model -> IO Model
+yankTask model = case selectedTaskId model of
+  Nothing -> pure model
+  Just selectedId ->
+    let allTasks          = tasks model
+        newTasks          = List.filter (\t -> tId t /= selectedId) allTasks
+        newSelectedTaskId = nextTaskId (selectedTaskId model) allTasks
+        removedTask       = List.find (\t -> tId t == selectedId) allTasks
+    in  do
+          DB.removeTask selectedId
+          pure $ model { tasks          = newTasks
+                       , selectedTaskId = newSelectedTaskId
+                       , clipboard      = removedTask
+                       }
 
 
 moveSelectedTaskToToday :: Model -> IO Model
@@ -198,7 +215,7 @@ moveSelectedTaskToToday model
                 Nothing -> pure model
                 Just t  -> do
                   newTask <- Task.build (Task.OnDate (today model)) (name t)
-                  addTask newTask
+                  DB.addTask newTask
                   pure (model { tasks = allTasks ++ [newTask] })
 
       moveTask = case selectedTaskId model of
@@ -215,7 +232,7 @@ moveSelectedTaskToToday model
           in  case task of
                 Nothing -> pure model
                 Just t  -> do
-                  updateTask t
+                  DB.updateTask t
                   pure
                     (model { tasks          = newTasks
                            , selectedTaskId = newSelectedTaskId
@@ -238,6 +255,7 @@ awaitingCommand model event = case event of
   (VtyEvent (EvKey (KChar 'd') [])) ->
     liftIO (deleteSelectedTask model) >>= M.continue
   (VtyEvent (EvKey (KChar 'p') [])) -> liftIO (pasteTask model) >>= M.continue
+  (VtyEvent (EvKey (KChar 'y') [])) -> liftIO (yankTask model) >>= M.continue
   (VtyEvent (EvKey (KChar ' ') [])) ->
     liftIO (toggleCompletionOfSelectedTask model) >>= M.continue
   (VtyEvent (EvKey (KChar 'J') [])) -> M.continue $ selectNextScreen model
